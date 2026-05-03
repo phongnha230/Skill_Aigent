@@ -34,6 +34,14 @@ export class McpClient {
     );
   }
 
+  get name(): string {
+    return this.config.name;
+  }
+
+  get isConnected(): boolean {
+    return this.connected;
+  }
+
   async connect(): Promise<void> {
     await this.client.connect(this.transport);
     this.connected = true;

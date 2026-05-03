@@ -5,8 +5,9 @@ dotenv.config();
 
 const envSchema = z.object({
   // --- LLM ---
-  OPENAI_API_KEY: z.string().min(1, "OPENAI_API_KEY is missing"),
+  OPENAI_API_KEY: z.string().optional(),
   OPENAI_MODEL: z.string().optional(),
+  OPENAI_BASE_URL: z.string().optional(),
 
   // --- MCP: PostgreSQL ---
   POSTGRES_CONNECTION_STRING: z.string().optional(),

@@ -3,13 +3,17 @@ import { LLMProvider } from "./llm.interface.js";
 import { Message } from "../core/memory.js";
 import { ToolCallDefinition } from "../tools/tool-manager.js";
 import { env } from "../config/env.js";
+import { agentConfig } from "../config/agent.js";
 
 export class OpenAIProvider implements LLMProvider {
   private client: OpenAI;
   private model: string;
 
-  constructor(model: string = env.OPENAI_MODEL ?? "gpt-4-turbo-preview") {
-    this.client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  constructor(model: string = env.OPENAI_MODEL ?? agentConfig.defaultOpenAIModel) {
+    this.client = new OpenAI({
+      apiKey: env.OPENAI_API_KEY || "ollama", // Dummy key for Ollama
+      baseURL: env.OPENAI_BASE_URL,
+    });
     this.model = model;
   }
 

@@ -3,9 +3,10 @@ import { ToolDefinition } from "./tool-manager.js";
 import { exec } from "child_process";
 import { promisify } from "util";
 import * as path from "path";
+import { agentConfig } from "../config/agent.js";
 
 const execAsync = promisify(exec);
-const workspaceRoot = process.cwd();
+const workspaceRoot = agentConfig.workspaceRoot;
 
 const blockedCommandPatterns = [
   /\brm\s+-rf\b/i,
@@ -50,8 +51,8 @@ export const terminalTool: ToolDefinition = {
       const safeCwd = resolveWorkspaceCwd(cwd);
       const { stdout, stderr } = await execAsync(command, {
         cwd: safeCwd,
-        timeout: 120_000,
-        maxBuffer: 1024 * 1024,
+        timeout: agentConfig.terminalTimeoutMs,
+        maxBuffer: agentConfig.terminalMaxBufferBytes,
       });
       return {
         success: true,

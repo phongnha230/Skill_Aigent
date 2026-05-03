@@ -1,8 +1,12 @@
 import { Orchestrator } from "../core/engine.js";
+import { MemoryStore } from "../core/memory-store.js";
+import { ProjectMapper } from "../core/project-mapper.js";
 import { ToolManager } from "../tools/tool-manager.js";
+import { listFilesTool, searchCodeTool } from "../tools/code-search.tool.js";
 import { writeFileTool, readFileTool } from "../tools/file-system.tool.js";
 import { terminalTool } from "../tools/terminal.tool.js";
 import { OpenAIProvider } from "../providers/openai.provider.js";
+import { AutoHealingWorkflow } from "../workflows/auto-healing.workflow.js";
 import { SoftwareDevelopmentWorkflow } from "../workflows/software-development.workflow.js";
 import { McpRegistry } from "../mcp/mcp-registry.js";
 import {
@@ -15,6 +19,8 @@ import {
 import { env } from "../config/env.js";
 import * as fs from "fs";
 import * as path from "path";
+import * as readline from "readline/promises";
+import { stdin as input, stdout as output } from "process";
 
 export interface McpOptions {
   postgres?: boolean;
@@ -22,6 +28,11 @@ export interface McpOptions {
   mongodb?: boolean;
   github?: boolean;
   docker?: boolean;
+}
+
+export interface CoderAgentOptions {
+  persistMemory?: boolean;
+  includeProjectMap?: boolean;
 }
 
 /**
@@ -33,10 +44,16 @@ export class CoderAgent {
   private mcpRegistry: McpRegistry = new McpRegistry();
   private skillFileName: string;
   private mcpOptions: McpOptions;
+  private options: Required<CoderAgentOptions>;
+  private memoryStore: MemoryStore | undefined;
 
-  constructor(skillFileName: string, mcpOptions: McpOptions = {}) {
+  constructor(skillFileName: string, mcpOptions: McpOptions = {}, options: CoderAgentOptions = {}) {
     this.skillFileName = skillFileName;
     this.mcpOptions = mcpOptions;
+    this.options = {
+      persistMemory: options.persistMemory ?? true,
+      includeProjectMap: options.includeProjectMap ?? true,
+    };
   }
 
   /**
@@ -47,6 +64,8 @@ export class CoderAgent {
     const toolManager = new ToolManager();
 
     // 1. Register built-in tools
+    toolManager.registerTool(listFilesTool);
+    toolManager.registerTool(searchCodeTool);
     toolManager.registerTool(writeFileTool);
     toolManager.registerTool(readFileTool);
     toolManager.registerTool(terminalTool);
@@ -84,13 +103,19 @@ export class CoderAgent {
     if (!fs.existsSync(skillPath)) {
       throw new Error(`Skill file not found at ${skillPath}`);
     }
-    const systemPrompt = fs.readFileSync(skillPath, "utf8");
+    const skillPrompt = fs.readFileSync(skillPath, "utf8");
+    const projectMap = this.options.includeProjectMap ? new ProjectMapper().buildSummary() : "";
+    const systemPrompt = projectMap ? `${skillPrompt}\n\n---\n\n${projectMap}` : skillPrompt;
 
     // 5. Initialize Provider + Orchestrator
     const provider = new OpenAIProvider();
-    this.orchestrator = new Orchestrator(systemPrompt, toolManager, provider);
+    this.memoryStore = this.options.persistMemory ? new MemoryStore() : undefined;
+    this.orchestrator = new Orchestrator(systemPrompt, toolManager, provider, this.memoryStore);
 
     console.log(`[Nexus]: Ready with ${this.skillFileName}\n`);
+    if (this.memoryStore) {
+      console.log(`[Nexus]: Memory file -> ${this.memoryStore.filePath}\n`);
+    }
   }
 
   async executeTask(task: string): Promise<void> {
@@ -101,6 +126,38 @@ export class CoderAgent {
     await this.orchestrator.run(task);
   }
 
+  async executeChat(): Promise<void> {
+    if (!this.orchestrator) {
+      throw new Error("Agent not initialized. Call initialize() first.");
+    }
+
+    const rl = readline.createInterface({ input, output });
+    console.log("[Nexus]: Chat mode started. Type /exit to quit, /clear to reset memory.");
+
+    try {
+      while (true) {
+        const answer = (await rl.question("\nYou> ")).trim();
+        if (!answer) {
+          continue;
+        }
+
+        if (answer === "/exit" || answer === "/quit") {
+          break;
+        }
+
+        if (answer === "/clear") {
+          this.clearMemory();
+          console.log("[Nexus]: Memory cleared.");
+          continue;
+        }
+
+        await this.orchestrator.run(answer);
+      }
+    } finally {
+      rl.close();
+    }
+  }
+
   async executeWorkflow(task: string): Promise<void> {
     if (!this.orchestrator) {
       throw new Error("Agent not initialized. Call initialize() first.");
@@ -109,7 +166,22 @@ export class CoderAgent {
     await workflow.execute(task);
   }
 
+  async executeAutoHeal(task: string): Promise<void> {
+    if (!this.orchestrator) {
+      throw new Error("Agent not initialized. Call initialize() first.");
+    }
+    const workflow = new AutoHealingWorkflow(this.orchestrator);
+    await workflow.execute(task);
+  }
+
   async shutdown(): Promise<void> {
     await this.mcpRegistry.disconnectAll();
+  }
+
+  clearMemory(): void {
+    if (!this.orchestrator) {
+      throw new Error("Agent not initialized. Call initialize() first.");
+    }
+    this.orchestrator.clearMemory();
   }
 }

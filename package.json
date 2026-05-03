@@ -8,7 +8,8 @@
   },
   "scripts": {
     "start": "node --loader ts-node/esm src/index.ts",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "tsc --outDir .tmp-build --declaration false --declarationMap false --sourceMap false && node .tmp-build/test/run-tests.js",
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [],
   "author": "",

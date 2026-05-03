@@ -3,25 +3,30 @@ import { ToolManager } from "../tools/tool-manager.js";
 import { LLMProvider } from "../providers/llm.interface.js";
 import chalk from "chalk";
 import { OpenAI } from "openai";
+import { agentConfig } from "../config/agent.js";
+import { MemoryStore } from "./memory-store.js";
 
 export class Orchestrator {
   private provider: LLMProvider;
   private memory: Memory;
   private toolManager: ToolManager;
+  private memoryStore: MemoryStore | undefined;
 
-  constructor(systemPrompt: string, toolManager: ToolManager, provider: LLMProvider) {
+  constructor(systemPrompt: string, toolManager: ToolManager, provider: LLMProvider, memoryStore?: MemoryStore) {
     this.provider = provider;
-    this.memory = new Memory(systemPrompt);
+    this.memoryStore = memoryStore;
+    this.memory = new Memory(systemPrompt, memoryStore?.load() ?? []);
     this.toolManager = toolManager;
   }
 
   async run(userInput: string) {
     console.log(chalk.blue("\n[User]: ") + userInput);
     this.memory.addMessage({ role: "user", content: userInput });
+    this.persistMemory();
 
     let isFinished = false;
     let turnCount = 0;
-    const maxTurns = 5;
+    const maxTurns = agentConfig.maxTurns;
 
     while (!isFinished && turnCount < maxTurns) {
       turnCount++;
@@ -32,6 +37,7 @@ export class Orchestrator {
         this.toolManager.getToolDefinitions()
       );
       this.memory.addMessage(message);
+      this.persistMemory();
 
       if (message.tool_calls && message.tool_calls.length > 0) {
         for (const toolCall of message.tool_calls) {
@@ -52,6 +58,7 @@ export class Orchestrator {
             content: result,
           };
           this.memory.addMessage(toolMessage);
+          this.persistMemory();
         }
       } else {
         console.log(chalk.magenta("\n[Agent]: ") + (message.content || "No content."));
@@ -62,5 +69,14 @@ export class Orchestrator {
     if (turnCount >= maxTurns) {
       console.log(chalk.red("\n[System]: Reached maximum turns. Stopping loop."));
     }
+  }
+
+  clearMemory(): void {
+    this.memory.clear();
+    this.memoryStore?.clear();
+  }
+
+  private persistMemory(): void {
+    this.memoryStore?.save(this.memory.getPersistableHistory());
   }
 }

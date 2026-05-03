@@ -2,8 +2,9 @@ import { z } from "zod";
 import { ToolDefinition } from "./tool-manager.js";
 import * as fs from "fs";
 import * as path from "path";
+import { agentConfig } from "../config/agent.js";
 
-const workspaceRoot = process.cwd();
+const workspaceRoot = agentConfig.workspaceRoot;
 
 function resolveWorkspacePath(filePath: string): string {
   const fullPath = path.resolve(workspaceRoot, filePath);

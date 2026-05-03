@@ -16,11 +16,22 @@ export class McpRegistry {
 
   async connectAll(): Promise<void> {
     console.log(`[MCP Registry]: Connecting to ${this.clients.length} server(s)...`);
-    await Promise.all(this.clients.map(c => c.connect()));
+    await Promise.all(
+      this.clients.map(async client => {
+        try {
+          await client.connect();
+        } catch (error: any) {
+          console.warn(`[MCP Registry]: Failed to connect "${client.name}". Continuing without it. ${error.message}`);
+        }
+      })
+    );
   }
 
   async registerAll(toolManager: ToolManager): Promise<void> {
     for (const client of this.clients) {
+      if (!client.isConnected) {
+        continue;
+      }
       await client.registerTo(toolManager);
     }
   }
