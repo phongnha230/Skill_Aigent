@@ -1,4 +1,4 @@
-#!/usr/bin/env -S node --loader ts-node/esm
+#!/usr/bin/env node
 import type { McpOptions } from "./agents/coder-agent.js";
 
 function printHelp(): void {
@@ -8,7 +8,8 @@ Nexus Agent
 Usage:
   npm start -- [options] "<task>"
   npm start -- chat [options]
-  npm start -- memory <show|path|clear>
+  npm start -- memory <show|path|clear> [--session <name>]
+  npm start -- audit <list|path|show>
 
 Options:
   --help            Show this help message
@@ -17,6 +18,9 @@ Options:
   --auto-heal       Run a bounded verify/fix/retry workflow
   --no-memory       Do not load or save .nexus/history.json
   --no-project-map  Do not inject the initial project map into the system prompt
+  --unsafe-terminal Allow non-allowlisted terminal commands. Use only in trusted workspaces
+  --session <name>  Use a named memory session
+  --no-audit        Do not write .nexus/runs audit logs
   --mcp-postgres    Enable PostgreSQL MCP tools
   --mcp-mysql       Enable MySQL MCP tools
   --mcp-mongodb     Enable MongoDB MCP tools
@@ -25,8 +29,9 @@ Options:
 
 Examples:
   npm start -- --skill nodejs-expert "Review this API design"
-  npm start -- chat --skill nodejs-expert
-  npm start -- memory show
+  npm start -- chat --session api --skill nodejs-expert
+  npm start -- memory show --session api
+  npm start -- audit show latest
   npm start -- --workflow --skill java-spring-expert "Create a user module"
   npm start -- --auto-heal "Fix the failing tests"
 `);
@@ -45,6 +50,12 @@ async function main() {
     return;
   }
 
+  if (args[0] === "audit") {
+    const { handleAuditCommand } = await import("./cli/audit-command.js");
+    await handleAuditCommand(args.slice(1));
+    return;
+  }
+
   let skillFileName = "coding-assistant.md";
   let userInput = "Hello! Tell me who you are and what you can do.";
   let useWorkflow = false;
@@ -52,6 +63,9 @@ async function main() {
   let useChat = false;
   let persistMemory = true;
   let includeProjectMap = true;
+  let allowUnsafeTerminal = false;
+  let sessionId: string | undefined;
+  let auditEnabled = true;
   const mcpOptions: McpOptions = {};
 
   const inputArgs: string[] = [];
@@ -70,6 +84,12 @@ async function main() {
       persistMemory = false;
     } else if (arg === "--no-project-map") {
       includeProjectMap = false;
+    } else if (arg === "--unsafe-terminal") {
+      allowUnsafeTerminal = true;
+    } else if (arg === "--session" && i + 1 < args.length) {
+      sessionId = args[++i];
+    } else if (arg === "--no-audit") {
+      auditEnabled = false;
     } else if (arg === "--mcp-postgres") {
       mcpOptions.postgres = true;
     } else if (arg === "--mcp-mysql") {
@@ -93,7 +113,13 @@ async function main() {
 
   try {
     const { CoderAgent } = await import("./agents/coder-agent.js");
-    agent = new CoderAgent(skillFileName, mcpOptions, { persistMemory, includeProjectMap });
+    agent = new CoderAgent(skillFileName, mcpOptions, {
+      persistMemory,
+      includeProjectMap,
+      allowUnsafeTerminal,
+      sessionId,
+      auditEnabled,
+    });
 
     console.log(`[Nexus]: Initializing agent with skill -> ${skillFileName}`);
     await agent.initialize();

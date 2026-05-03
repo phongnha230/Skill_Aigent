@@ -6,16 +6,38 @@ import { Message } from "./memory.js";
 interface PersistedMemoryFile {
   version: 1;
   updatedAt: string;
+  sessionId: string;
   messages: Message[];
+}
+
+function sanitizeSessionId(sessionId: string): string {
+  const normalized = sessionId.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+  if (!normalized) {
+    throw new Error("Session id must contain at least one letter or number.");
+  }
+  return normalized;
+}
+
+export function resolveMemoryFilePath(sessionId?: string): string {
+  if (!sessionId || sessionId === "default") {
+    return path.join(agentConfig.workspaceRoot, agentConfig.memoryDirName, agentConfig.memoryFileName);
+  }
+
+  return path.join(
+    agentConfig.workspaceRoot,
+    agentConfig.memoryDirName,
+    agentConfig.sessionMemoryDirName,
+    `${sanitizeSessionId(sessionId)}.json`
+  );
 }
 
 export class MemoryStore {
   readonly filePath: string;
+  readonly sessionId: string;
 
-  constructor(
-    filePath: string = path.join(agentConfig.workspaceRoot, agentConfig.memoryDirName, agentConfig.memoryFileName)
-  ) {
-    this.filePath = filePath;
+  constructor(filePathOrSessionId?: string, options: { isFilePath?: boolean } = {}) {
+    this.sessionId = options.isFilePath ? "test" : filePathOrSessionId ?? "default";
+    this.filePath = options.isFilePath ? filePathOrSessionId ?? resolveMemoryFilePath() : resolveMemoryFilePath(filePathOrSessionId);
   }
 
   load(): Message[] {
@@ -41,6 +63,7 @@ export class MemoryStore {
     const payload: PersistedMemoryFile = {
       version: 1,
       updatedAt: new Date().toISOString(),
+      sessionId: this.sessionId,
       messages: messages.filter(message => message.role !== "system"),
     };
 

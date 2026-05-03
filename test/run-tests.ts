@@ -1,3 +1,4 @@
+import "./audit-logger.test.js";
 import "./code-search-tool.test.js";
 import "./memory-command.test.js";
 import "./memory-store.test.js";

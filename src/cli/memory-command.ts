@@ -26,21 +26,41 @@ export function formatMemoryMessages(messages: Message[]): string {
     .join("\n");
 }
 
-export async function handleMemoryCommand(args: string[], store: MemoryStore = new MemoryStore()): Promise<void> {
-  const subcommand = args[0] ?? "show";
+function parseMemoryArgs(args: string[]): { subcommand: string; sessionId: string | undefined } {
+  let subcommand = "show";
+  let sessionId: string | undefined;
+
+  for (let index = 0; index < args.length; index++) {
+    const arg = args[index];
+    if (arg === "--session" && args[index + 1]) {
+      sessionId = args[++index];
+      continue;
+    }
+
+    if (arg && !arg.startsWith("--")) {
+      subcommand = arg;
+    }
+  }
+
+  return { subcommand, sessionId };
+}
+
+export async function handleMemoryCommand(args: string[], store?: MemoryStore): Promise<void> {
+  const { subcommand, sessionId } = parseMemoryArgs(args);
+  const memoryStore = store ?? new MemoryStore(sessionId);
 
   if (subcommand === "show") {
-    console.log(formatMemoryMessages(store.load()));
+    console.log(formatMemoryMessages(memoryStore.load()));
     return;
   }
 
   if (subcommand === "path") {
-    console.log(store.filePath);
+    console.log(memoryStore.filePath);
     return;
   }
 
   if (subcommand === "clear") {
-    store.clear();
+    memoryStore.clear();
     console.log("Memory cleared.");
     return;
   }

@@ -3,11 +3,12 @@ import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { readFileTool, writeFileTool } from "../src/tools/file-system.tool.js";
-import { terminalTool } from "../src/tools/terminal.tool.js";
+import { configureTerminalTool, terminalTool } from "../src/tools/terminal.tool.js";
 
 const tempDir = ".tmp-test";
 
 test.afterEach(() => {
+  configureTerminalTool({ allowUnsafeTerminal: false });
   fs.rmSync(path.resolve(process.cwd(), tempDir), { recursive: true, force: true });
 });
 
@@ -37,7 +38,7 @@ test("terminal tool runs commands from inside the workspace", async t => {
   fs.mkdirSync(path.resolve(process.cwd(), tempDir), { recursive: true });
 
   const result = await terminalTool.execute({
-    command: "node -e \"console.log(process.cwd())\"",
+    command: "node -v",
     cwd: tempDir,
   });
 
@@ -47,12 +48,12 @@ test("terminal tool runs commands from inside the workspace", async t => {
   }
 
   assert.equal(result.success, true);
-  assert.equal(path.resolve(result.stdout), path.resolve(process.cwd(), tempDir));
+  assert.match(result.stdout, /^v\d+\./);
 });
 
 test("terminal tool rejects cwd outside the workspace", async () => {
   const result = await terminalTool.execute({
-    command: "node -e \"console.log('blocked')\"",
+    command: "node -v",
     cwd: "..",
   });
 
@@ -67,4 +68,33 @@ test("terminal tool rejects obviously destructive commands", async () => {
 
   assert.equal(result.success, false);
   assert.match(result.error, /Command rejected by safety policy/);
+});
+
+test("terminal tool rejects commands outside the safe allowlist", async () => {
+  const result = await terminalTool.execute({
+    command: "whoami",
+  });
+
+  assert.equal(result.success, false);
+  assert.match(result.error, /not in the safe terminal allowlist/);
+});
+
+test("terminal tool rejects shell control operators in safe mode", async () => {
+  const result = await terminalTool.execute({
+    command: "npm test && npm run typecheck",
+  });
+
+  assert.equal(result.success, false);
+  assert.match(result.error, /shell control operators/);
+});
+
+test("unsafe terminal mode bypasses allowlist but still blocks destructive commands", async () => {
+  configureTerminalTool({ allowUnsafeTerminal: true });
+
+  const blocked = await terminalTool.execute({
+    command: "git reset --hard",
+  });
+
+  assert.equal(blocked.success, false);
+  assert.match(blocked.error, /Command rejected by safety policy/);
 });

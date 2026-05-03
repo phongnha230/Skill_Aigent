@@ -22,7 +22,7 @@ test("Memory keeps system prompt out of persisted history", () => {
 
 test("MemoryStore saves, loads, and clears chat history", () => {
   const filePath = path.resolve(process.cwd(), tempDir, "history.json");
-  const store = new MemoryStore(filePath);
+  const store = new MemoryStore(filePath, { isFilePath: true });
 
   store.save([
     { role: "system", content: "system prompt" },
@@ -37,4 +37,11 @@ test("MemoryStore saves, loads, and clears chat history", () => {
 
   store.clear();
   assert.equal(fs.existsSync(filePath), false);
+});
+
+test("MemoryStore resolves named sessions into separate files", () => {
+  const store = new MemoryStore("Api Refactor");
+
+  assert.match(store.filePath.replace(/\\/g, "/"), /\.nexus\/sessions\/api-refactor\.json$/);
+  assert.equal(store.sessionId, "Api Refactor");
 });

@@ -1,10 +1,11 @@
 import { Orchestrator } from "../core/engine.js";
+import { AuditLogger } from "../core/audit-logger.js";
 import { MemoryStore } from "../core/memory-store.js";
 import { ProjectMapper } from "../core/project-mapper.js";
 import { ToolManager } from "../tools/tool-manager.js";
 import { listFilesTool, searchCodeTool } from "../tools/code-search.tool.js";
 import { writeFileTool, readFileTool } from "../tools/file-system.tool.js";
-import { terminalTool } from "../tools/terminal.tool.js";
+import { configureTerminalTool, terminalTool } from "../tools/terminal.tool.js";
 import { OpenAIProvider } from "../providers/openai.provider.js";
 import { AutoHealingWorkflow } from "../workflows/auto-healing.workflow.js";
 import { SoftwareDevelopmentWorkflow } from "../workflows/software-development.workflow.js";
@@ -21,6 +22,25 @@ import * as fs from "fs";
 import * as path from "path";
 import * as readline from "readline/promises";
 import { stdin as input, stdout as output } from "process";
+import { fileURLToPath } from "url";
+
+const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+
+function resolveSkillPath(skillFileName: string): string {
+  const workspaceSkillPath = path.resolve(process.cwd(), "skills", skillFileName);
+  if (fs.existsSync(workspaceSkillPath)) {
+    return workspaceSkillPath;
+  }
+
+  const bundledSkillPath = path.resolve(moduleDir, "..", "..", "skills", skillFileName);
+  if (fs.existsSync(bundledSkillPath)) {
+    return bundledSkillPath;
+  }
+
+  throw new Error(
+    `Skill file not found. Checked workspace skill at ${workspaceSkillPath} and bundled skill at ${bundledSkillPath}`
+  );
+}
 
 export interface McpOptions {
   postgres?: boolean;
@@ -33,6 +53,9 @@ export interface McpOptions {
 export interface CoderAgentOptions {
   persistMemory?: boolean;
   includeProjectMap?: boolean;
+  allowUnsafeTerminal?: boolean;
+  sessionId?: string | undefined;
+  auditEnabled?: boolean;
 }
 
 /**
@@ -44,8 +67,15 @@ export class CoderAgent {
   private mcpRegistry: McpRegistry = new McpRegistry();
   private skillFileName: string;
   private mcpOptions: McpOptions;
-  private options: Required<CoderAgentOptions>;
+  private options: {
+    persistMemory: boolean;
+    includeProjectMap: boolean;
+    allowUnsafeTerminal: boolean;
+    sessionId: string | undefined;
+    auditEnabled: boolean;
+  };
   private memoryStore: MemoryStore | undefined;
+  private auditLogger: AuditLogger | undefined;
 
   constructor(skillFileName: string, mcpOptions: McpOptions = {}, options: CoderAgentOptions = {}) {
     this.skillFileName = skillFileName;
@@ -53,6 +83,9 @@ export class CoderAgent {
     this.options = {
       persistMemory: options.persistMemory ?? true,
       includeProjectMap: options.includeProjectMap ?? true,
+      allowUnsafeTerminal: options.allowUnsafeTerminal ?? false,
+      sessionId: options.sessionId,
+      auditEnabled: options.auditEnabled ?? true,
     };
   }
 
@@ -62,6 +95,7 @@ export class CoderAgent {
    */
   async initialize(): Promise<void> {
     const toolManager = new ToolManager();
+    configureTerminalTool({ allowUnsafeTerminal: this.options.allowUnsafeTerminal });
 
     // 1. Register built-in tools
     toolManager.registerTool(listFilesTool);
@@ -99,22 +133,23 @@ export class CoderAgent {
     await this.mcpRegistry.registerAll(toolManager);
 
     // 4. Load Skill
-    const skillPath = path.resolve(process.cwd(), "skills", this.skillFileName);
-    if (!fs.existsSync(skillPath)) {
-      throw new Error(`Skill file not found at ${skillPath}`);
-    }
+    const skillPath = resolveSkillPath(this.skillFileName);
     const skillPrompt = fs.readFileSync(skillPath, "utf8");
     const projectMap = this.options.includeProjectMap ? new ProjectMapper().buildSummary() : "";
     const systemPrompt = projectMap ? `${skillPrompt}\n\n---\n\n${projectMap}` : skillPrompt;
 
     // 5. Initialize Provider + Orchestrator
     const provider = new OpenAIProvider();
-    this.memoryStore = this.options.persistMemory ? new MemoryStore() : undefined;
-    this.orchestrator = new Orchestrator(systemPrompt, toolManager, provider, this.memoryStore);
+    this.memoryStore = this.options.persistMemory ? new MemoryStore(this.options.sessionId) : undefined;
+    this.auditLogger = this.options.auditEnabled ? new AuditLogger() : undefined;
+    this.orchestrator = new Orchestrator(systemPrompt, toolManager, provider, this.memoryStore, this.auditLogger);
 
     console.log(`[Nexus]: Ready with ${this.skillFileName}\n`);
     if (this.memoryStore) {
       console.log(`[Nexus]: Memory file -> ${this.memoryStore.filePath}\n`);
+    }
+    if (this.auditLogger) {
+      console.log(`[Nexus]: Audit logs -> ${this.auditLogger.runsDir}\n`);
     }
   }
 

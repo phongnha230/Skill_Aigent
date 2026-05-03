@@ -3,4 +3,5 @@ node_modules/
 .nexus/
 .tmp-build/
 .tmp-test/
+*.tsbuildinfo
 dist/

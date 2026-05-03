@@ -2,16 +2,29 @@
   "name": "nexus-agent",
   "version": "1.0.0",
   "description": "Nexus AI Agent - The multi-MCP autonomous coding framework",
-  "main": "index.js",
+  "main": "dist/index.js",
   "bin": {
-    "nexus": "src/index.ts"
+    "nexus": "dist/index.js"
   },
   "scripts": {
     "start": "node --loader ts-node/esm src/index.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "prepare": "npm run build",
     "test": "tsc --outDir .tmp-build --declaration false --declarationMap false --sourceMap false && node .tmp-build/test/run-tests.js",
     "typecheck": "tsc --noEmit"
   },
-  "keywords": [],
+  "files": [
+    "dist",
+    "skills",
+    ".env.example",
+    "README.md"
+  ],
+  "keywords": [
+    "ai-agent",
+    "coding-agent",
+    "mcp",
+    "cli"
+  ],
   "author": "",
   "license": "ISC",
   "type": "module",
