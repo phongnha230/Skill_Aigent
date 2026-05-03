@@ -10,6 +10,8 @@ Usage:
   npm start -- chat [options]
   npm start -- memory <show|path|clear> [--session <name>]
   npm start -- audit <list|path|show>
+  npm start -- diagnose "<verification-command>"
+  npm start -- fix-log <log-file>
 
 Options:
   --help            Show this help message
@@ -32,6 +34,8 @@ Examples:
   npm start -- chat --session api --skill nodejs-expert
   npm start -- memory show --session api
   npm start -- audit show latest
+  npm start -- diagnose "npm test"
+  npm start -- fix-log logs/error.log
   npm start -- --workflow --skill java-spring-expert "Create a user module"
   npm start -- --auto-heal "Fix the failing tests"
 `);
@@ -60,6 +64,8 @@ async function main() {
   let userInput = "Hello! Tell me who you are and what you can do.";
   let useWorkflow = false;
   let useAutoHeal = false;
+  let useDiagnose = false;
+  let useFixLog = false;
   let useChat = false;
   let persistMemory = true;
   let includeProjectMap = true;
@@ -73,6 +79,10 @@ async function main() {
     const arg = args[i] as string;
     if (arg === "chat") {
       useChat = true;
+    } else if (arg === "diagnose") {
+      useDiagnose = true;
+    } else if (arg === "fix-log") {
+      useFixLog = true;
     } else if (arg === "--skill" && i + 1 < args.length) {
       const skillArg = args[++i] as string;
       skillFileName = skillArg.endsWith(".md") ? skillArg : `${skillArg}.md`;
@@ -126,6 +136,10 @@ async function main() {
 
     if (useChat) {
       await agent.executeChat();
+    } else if (useDiagnose) {
+      await agent.executeDiagnose(userInput);
+    } else if (useFixLog) {
+      await agent.executeFixLog(userInput);
     } else if (useAutoHeal) {
       await agent.executeAutoHeal(userInput);
     } else if (useWorkflow) {

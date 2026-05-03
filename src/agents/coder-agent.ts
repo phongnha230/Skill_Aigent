@@ -5,9 +5,11 @@ import { ProjectMapper } from "../core/project-mapper.js";
 import { ToolManager } from "../tools/tool-manager.js";
 import { listFilesTool, searchCodeTool } from "../tools/code-search.tool.js";
 import { writeFileTool, readFileTool } from "../tools/file-system.tool.js";
+import { analyzeLogTool } from "../tools/log-analysis.tool.js";
 import { configureTerminalTool, terminalTool } from "../tools/terminal.tool.js";
 import { OpenAIProvider } from "../providers/openai.provider.js";
 import { AutoHealingWorkflow } from "../workflows/auto-healing.workflow.js";
+import { LogDiagnosisWorkflow } from "../workflows/log-diagnosis.workflow.js";
 import { SoftwareDevelopmentWorkflow } from "../workflows/software-development.workflow.js";
 import { McpRegistry } from "../mcp/mcp-registry.js";
 import {
@@ -98,6 +100,7 @@ export class CoderAgent {
     configureTerminalTool({ allowUnsafeTerminal: this.options.allowUnsafeTerminal });
 
     // 1. Register built-in tools
+    toolManager.registerTool(analyzeLogTool);
     toolManager.registerTool(listFilesTool);
     toolManager.registerTool(searchCodeTool);
     toolManager.registerTool(writeFileTool);
@@ -207,6 +210,22 @@ export class CoderAgent {
     }
     const workflow = new AutoHealingWorkflow(this.orchestrator);
     await workflow.execute(task);
+  }
+
+  async executeDiagnose(command: string): Promise<void> {
+    if (!this.orchestrator) {
+      throw new Error("Agent not initialized. Call initialize() first.");
+    }
+    const workflow = new LogDiagnosisWorkflow(this.orchestrator);
+    await workflow.diagnoseCommand(command);
+  }
+
+  async executeFixLog(filePath: string): Promise<void> {
+    if (!this.orchestrator) {
+      throw new Error("Agent not initialized. Call initialize() first.");
+    }
+    const workflow = new LogDiagnosisWorkflow(this.orchestrator);
+    await workflow.fixLogFile(filePath);
   }
 
   async shutdown(): Promise<void> {
